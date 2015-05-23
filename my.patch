@@ -1,0 +1,94 @@
+diff -Naur a/keystone/common/authorization.py b/keystone/common/authorization.py
+--- a/keystone/common/authorization.py	Sat May 23 13:40:58 2015
++++ b/keystone/common/authorization.py	Sat May 23 13:57:40 2015
+@@ -67,7 +67,7 @@
+ 
+ 
+ def v3_token_to_auth_context(token):
+-    creds = {}
++    creds = {'is_delegated_auth': False, 'pre_delegated_roles': []}
+     token_data = token['token']
+     try:
+         creds['user_id'] = token_data['user']['id']
+@@ -87,11 +87,25 @@
+     creds['group_ids'] = [
+         g['id'] for g in token_data['user'].get(federation.FEDERATION, {}).get(
+             'groups', [])]
++
++    trust = token_data.get('OS-TRUST:trust')
++    if trust is None:
++        creds['trust_id'] = None
++        creds['trustor_id'] = None
++        creds['trustee_id'] = None
++    else:
++        creds['trust_id'] = trust['id']
++        creds['trustor_id'] = trust['trustor_user']['id']
++        creds['trustee_id'] = trust['trustee_user']['id']
++        creds['is_delegated_auth'] = True
++        for temp_role in token_data.get('roles'):
++            creds['pre_delegated_roles'].append(temp_role['name'])
++     
+     return creds
+ 
+ 
+ def v2_token_to_auth_context(token):
+-    creds = {}
++    creds = {'is_delegated_auth': False, 'pre_delegated_roles': []}
+     token_data = token['access']
+     try:
+         creds['user_id'] = token_data['user']['id']
+@@ -105,6 +119,20 @@
+     if 'roles' in token_data['user']:
+         creds['roles'] = [role['name'] for
+                           role in token_data['user']['roles']]
++
++    trust = token_data.get('OS-TRUST:trust')
++    if trust is None:
++        creds['trust_id'] = None
++        creds['trustor_id'] = None
++        creds['trustee_id'] = None
++    else:
++        creds['trust_id'] = trust['id']
++        creds['trustor_id'] = trust['trustor_user']['id']
++        creds['trustee_id'] = trust['trustee_user']['id']
++        creds['is_delegated_auth'] = True
++        for temp_role in token_data.get('roles'):
++            creds['pre_delegated_roles'].append(temp_role['name'])
++
+     return creds
+ 
+ 
+diff -Naur a/keystone/exception.py b/keystone/exception.py
+--- a/keystone/exception.py	Sat May 23 13:40:58 2015
++++ b/keystone/exception.py	Sat May 23 13:34:27 2015
+@@ -169,6 +169,9 @@
+     code = 403
+     title = 'Forbidden'
+ 
++class DelegationForbidden(Forbidden):
++    message_format = _("You are not authorized to delegate "
++                        "the %(role_name)s.")
+ 
+ class ForbiddenAction(Forbidden):
+     message_format = _("You are not authorized to perform the"
+diff -Naur a/keystone/trust/controllers.py b/keystone/trust/controllers.py
+--- a/keystone/trust/controllers.py	Sat May 23 13:40:58 2015
++++ b/keystone/trust/controllers.py	Sat May 23 13:25:46 2015
+@@ -156,6 +156,17 @@
+                                   if x == trust_role['id']]
+                 if not matching_roles:
+                     raise exception.RoleNotFound(role_id=trust_role['id'])
++
++            auth_context = context.get('environment',
++                                    {}).get('KEYSTONE_AUTH_CONTEXT',{})
++            delegate_roles_name = trust.get('roles',[])
++            for delegating_role in delegate_roles_name:
++                if delegating_role['name'] not in auth_context.get(
++                        'pre_delegated_roles',[]) and auth_context.get(
++                        'is_delegated_auth'):
++                    raise exception.DelagetionForbidden(
++                            role_name=delegating_role['name'])
++
+             if trust.get('expires_at') is not None:
+                 if not trust['expires_at'].endswith('Z'):
+                     trust['expires_at'] += 'Z'
