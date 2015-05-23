@@ -1,0 +1,154 @@
+diff -Nuar a/keystone/common/authorization.py b/keystone/common/authorization.py
+--- a/keystone/common/authorization.py	Sat May 23 13:40:58 2015
++++ b/keystone/common/authorization.py	Sat May 23 22:44:46 2015
+@@ -67,7 +67,7 @@
+ 
+ 
+ def v3_token_to_auth_context(token):
+-    creds = {}
++    creds = {'is_delegated_auth': False, 'pre_delegated_roles': []}
+     token_data = token['token']
+     try:
+         creds['user_id'] = token_data['user']['id']
+@@ -87,11 +87,36 @@
+     creds['group_ids'] = [
+         g['id'] for g in token_data['user'].get(federation.FEDERATION, {}).get(
+             'groups', [])]
++
++    trust = token_data.get('OS-TRUST:trust')
++    if trust is None:
++        creds['trust_id'] = None
++        creds['trustor_id'] = None
++        creds['trustee_id'] = None
++    else:
++        creds['trust_id'] = trust['id']
++        creds['trustor_id'] = trust['trustor_user']['id']
++        creds['trustee_id'] = trust['trustee_user']['id']
++        creds['is_delegated_auth'] = True
++        for temp_role in token_data.get('roles'):
++            creds['pre_delegated_roles'].append(temp_role['name'])
++
++    oauth1 = token_data.get('OS-OAUTH1')
++    if oauth1 is None:
++        creds['consumer_id'] = None
++        creds['access_token_id'] = None
++    else:
++        creds['consumer_id'] = oauth1['consumer_id']
++        creds['access_token_id'] = oauth1['access_token_id']
++        creds['is_delegated_auth'] = True
++        for temp_role in token_data.get('roles'):
++            creds['pre_delegated_roles'].append(temp_role['name'])
++
+     return creds
+ 
+ 
+ def v2_token_to_auth_context(token):
+-    creds = {}
++    creds = {'is_delegated_auth': False, 'pre_delegated_roles': []}
+     token_data = token['access']
+     try:
+         creds['user_id'] = token_data['user']['id']
+@@ -105,6 +130,20 @@
+     if 'roles' in token_data['user']:
+         creds['roles'] = [role['name'] for
+                           role in token_data['user']['roles']]
++
++    trust = token_data.get('OS-TRUST:trust')
++    if trust is None:
++        creds['trust_id'] = None
++        creds['trustor_id'] = None
++        creds['trustee_id'] = None
++    else:
++        creds['trust_id'] = trust['id']
++        creds['trustor_id'] = trust['trustor_user']['id']
++        creds['trustee_id'] = trust['trustee_user']['id']
++        creds['is_delegated_auth'] = True
++        for temp_role in token_data.get('roles'):
++            creds['pre_delegated_roles'].append(temp_role['name'])
++
+     return creds
+ 
+ 
+diff -Nuar a/keystone/contrib/oauth1/controllers.py b/keystone/contrib/oauth1/controllers.py
+--- a/keystone/contrib/oauth1/controllers.py	Fri Jun  6 05:33:24 2014
++++ b/keystone/contrib/oauth1/controllers.py	Sat May 23 22:14:28 2015
+@@ -95,6 +95,22 @@
+ 
+     @controller.protected()
+     def list_access_tokens(self, context, user_id):
++        # Add delegating roles checking
++        auth_context = context.get('environment',
++                                    {}).get('KEYSTONE_AUTH_CONTEXT',{})
++        openstack_params = context.get('environment',
++                                    {}).get('openstack.params',{})
++        delegate_roles = openstack_params.get('trust',{}).get('roles')
++        delegate_roles_name = []
++        for role in delegate_roles:
++            delegate_roles_name.append(role.get('name'))
++        for delegating_role in delegate_roles_name:
++            if delegating_role not in auth_context.get(
++                    'pre_delegated_roles',[]) and auth_context.get(
++                    'is_delegated_auth'):
++                raise exception.DelegationForbidden(
++                            role_name=delegating_role['name'])
++
+         refs = self.oauth_api.list_access_tokens(user_id)
+         formatted_refs = ([self._format_token_entity(context, x)
+                            for x in refs])
+@@ -313,6 +329,22 @@
+ 
+         req_token = self.oauth_api.get_request_token(request_token_id)
+ 
++        # Add delegating roles checking
++        auth_context = context.get('environment',
++                                    {}).get('KEYSTONE_AUTH_CONTEXT',{})
++        openstack_params = context.get('environment',
++                                    {}).get('openstack.params',{})
++        delegate_roles = openstack_params.get('trust',{}).get('roles')
++        delegate_roles_name = []
++        for role in delegate_roles:
++            delegate_roles_name.append(role.get('name'))
++        for delegating_role in delegate_roles_name:
++            if delegating_role not in auth_context.get(
++                    'pre_delegated_roles',[]) and auth_context.get(
++                    'is_delegated_auth'):
++                raise exception.DelegationForbidden(
++                            role_name=delegating_role['name'])
++        
+         expires_at = req_token['expires_at']
+         if expires_at:
+             now = timeutils.utcnow()
+diff -Nuar a/keystone/exception.py b/keystone/exception.py
+--- a/keystone/exception.py	Sat May 23 13:40:58 2015
++++ b/keystone/exception.py	Sat May 23 13:34:27 2015
+@@ -169,6 +169,9 @@
+     code = 403
+     title = 'Forbidden'
+ 
++class DelegationForbidden(Forbidden):
++    message_format = _("You are not authorized to delegate "
++                        "the %(role_name)s.")
+ 
+ class ForbiddenAction(Forbidden):
+     message_format = _("You are not authorized to perform the"
+diff -Nuar a/keystone/trust/controllers.py b/keystone/trust/controllers.py
+--- a/keystone/trust/controllers.py	Sat May 23 13:40:58 2015
++++ b/keystone/trust/controllers.py	Sat May 23 22:14:35 2015
+@@ -156,6 +156,17 @@
+                                   if x == trust_role['id']]
+                 if not matching_roles:
+                     raise exception.RoleNotFound(role_id=trust_role['id'])
++
++            auth_context = context.get('environment',
++                                    {}).get('KEYSTONE_AUTH_CONTEXT',{})
++            delegate_roles_name = trust.get('roles',[])
++            for delegating_role in delegate_roles_name:
++                if delegating_role['name'] not in auth_context.get(
++                        'pre_delegated_roles',[]) and auth_context.get(
++                        'is_delegated_auth'):
++                    raise exception.DelegationForbidden(
++                            role_name=delegating_role['name'])
++
+             if trust.get('expires_at') is not None:
+                 if not trust['expires_at'].endswith('Z'):
+                     trust['expires_at'] += 'Z'
