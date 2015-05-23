@@ -73,7 +73,7 @@ diff -Nuar a/keystone/exception.py b/keystone/exception.py
      message_format = _("You are not authorized to perform the"
 diff -Nuar a/keystone/trust/controllers.py b/keystone/trust/controllers.py
 --- a/keystone/trust/controllers.py	Sat May 23 13:40:58 2015
-+++ b/keystone/trust/controllers.py	Sat May 23 15:13:51 2015
++++ b/keystone/trust/controllers.py	Sat May 23 15:27:14 2015
 @@ -156,6 +156,17 @@
                                    if x == trust_role['id']]
                  if not matching_roles:
@@ -86,7 +86,7 @@ diff -Nuar a/keystone/trust/controllers.py b/keystone/trust/controllers.py
 +                if delegating_role['name'] not in auth_context.get(
 +                        'pre_delegated_roles',[]) and auth_context.get(
 +                        'is_delegated_auth'):
-+                    raise exception.DelegetionForbidden(
++                    raise exception.DelegationForbidden(
 +                            role_name=delegating_role['name'])
 +
              if trust.get('expires_at') is not None:
