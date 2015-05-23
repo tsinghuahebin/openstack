@@ -156,17 +156,6 @@ class TrustV3(controller.V3Controller):
                                   if x == trust_role['id']]
                 if not matching_roles:
                     raise exception.RoleNotFound(role_id=trust_role['id'])
-
-            auth_context = context.get('environment',
-                                    {}).get('KEYSTONE_AUTH_CONTEXT',{})
-            delegate_roles_name = trust.get('roles',[])
-            for delegating_role in delegate_roles_name:
-                if delegating_role['name'] not in auth_context.get(
-                        'pre_delegated_roles',[]) and auth_context.get(
-                        'is_delegated_auth'):
-                    raise exception.DelagetionForbidden(
-                            role_name=delegating_role['name'])
-
             if trust.get('expires_at') is not None:
                 if not trust['expires_at'].endswith('Z'):
                     trust['expires_at'] += 'Z'

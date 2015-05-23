@@ -169,9 +169,6 @@ class Forbidden(SecurityError):
     code = 403
     title = 'Forbidden'
 
-class DelegationForbidden(Forbidden):
-    message_format = _("You are not authorized to delegate "
-                        "the %(role_name)s.")
 
 class ForbiddenAction(Forbidden):
     message_format = _("You are not authorized to perform the"

@@ -67,7 +67,7 @@ def is_v3_token(token):
 
 
 def v3_token_to_auth_context(token):
-    creds = {'is_delegated_auth': False, 'pre_delegated_roles': []}
+    creds = {}
     token_data = token['token']
     try:
         creds['user_id'] = token_data['user']['id']
@@ -87,25 +87,11 @@ def v3_token_to_auth_context(token):
     creds['group_ids'] = [
         g['id'] for g in token_data['user'].get(federation.FEDERATION, {}).get(
             'groups', [])]
-
-    trust = token_data.get('OS-TRUST:trust')
-    if trust is None:
-        creds['trust_id'] = None
-        creds['trustor_id'] = None
-        creds['trustee_id'] = None
-    else:
-        creds['trust_id'] = trust['id']
-        creds['trustor_id'] = trust['trustor_user']['id']
-        creds['trustee_id'] = trust['trustee_user']['id']
-        creds['is_delegated_auth'] = True
-        for temp_role in token_data.get('roles'):
-            creds['pre_delegated_roles'].append(temp_role['name'])
-     
     return creds
 
 
 def v2_token_to_auth_context(token):
-    creds = {'is_delegated_auth': False, 'pre_delegated_roles': []}
+    creds = {}
     token_data = token['access']
     try:
         creds['user_id'] = token_data['user']['id']
@@ -119,20 +105,6 @@ def v2_token_to_auth_context(token):
     if 'roles' in token_data['user']:
         creds['roles'] = [role['name'] for
                           role in token_data['user']['roles']]
-
-    trust = token_data.get('OS-TRUST:trust')
-    if trust is None:
-        creds['trust_id'] = None
-        creds['trustor_id'] = None
-        creds['trustee_id'] = None
-    else:
-        creds['trust_id'] = trust['id']
-        creds['trustor_id'] = trust['trustor_user']['id']
-        creds['trustee_id'] = trust['trustee_user']['id']
-        creds['is_delegated_auth'] = True
-        for temp_role in token_data.get('roles'):
-            creds['pre_delegated_roles'].append(temp_role['name'])
-
     return creds
 
 
