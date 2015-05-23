@@ -1,4 +1,4 @@
-diff -Naur a/keystone/common/authorization.py b/keystone/common/authorization.py
+diff -Nuar a/keystone/common/authorization.py b/keystone/common/authorization.py
 --- a/keystone/common/authorization.py	Sat May 23 13:40:58 2015
 +++ b/keystone/common/authorization.py	Sat May 23 13:57:40 2015
 @@ -67,7 +67,7 @@
@@ -58,7 +58,7 @@ diff -Naur a/keystone/common/authorization.py b/keystone/common/authorization.py
      return creds
  
  
-diff -Naur a/keystone/exception.py b/keystone/exception.py
+diff -Nuar a/keystone/exception.py b/keystone/exception.py
 --- a/keystone/exception.py	Sat May 23 13:40:58 2015
 +++ b/keystone/exception.py	Sat May 23 13:34:27 2015
 @@ -169,6 +169,9 @@
@@ -71,9 +71,9 @@ diff -Naur a/keystone/exception.py b/keystone/exception.py
  
  class ForbiddenAction(Forbidden):
      message_format = _("You are not authorized to perform the"
-diff -Naur a/keystone/trust/controllers.py b/keystone/trust/controllers.py
+diff -Nuar a/keystone/trust/controllers.py b/keystone/trust/controllers.py
 --- a/keystone/trust/controllers.py	Sat May 23 13:40:58 2015
-+++ b/keystone/trust/controllers.py	Sat May 23 13:25:46 2015
++++ b/keystone/trust/controllers.py	Sat May 23 15:13:51 2015
 @@ -156,6 +156,17 @@
                                    if x == trust_role['id']]
                  if not matching_roles:
@@ -86,7 +86,7 @@ diff -Naur a/keystone/trust/controllers.py b/keystone/trust/controllers.py
 +                if delegating_role['name'] not in auth_context.get(
 +                        'pre_delegated_roles',[]) and auth_context.get(
 +                        'is_delegated_auth'):
-+                    raise exception.DelagetionForbidden(
++                    raise exception.DelegetionForbidden(
 +                            role_name=delegating_role['name'])
 +
              if trust.get('expires_at') is not None:
