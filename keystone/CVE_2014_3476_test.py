@@ -16,9 +16,9 @@ To setup the experiment environment, do as follows:
 	keystone user-create --name User1 --tenant Tenant1 --pass User1
 	keystone user-create --name User2 --tenant Tenant2 --pass User2
 	keystone user-create --name User3 --tenant Tenant3 --pass User3
-3.Create a test role£º
+3.Create a test role:
 	keystone role-create --name test
-3.Add the admin and test role of Tenant1 to User1£º
+4.Add the admin and test role of Tenant1 to User1:
 	keystone user-role-add --user User1 --tenant Tenant1 --role admin
 	keystone user-role-add --user User1 --tenant Tenant1 --role test
 Now, we have three tenants and each tenant has a user. By default, every user has the '_member_'
@@ -48,7 +48,7 @@ third_trustee_project = 'Tenant3'
 delegate_roles = ['test',]
 
 # Define the roles User2 delegates to User3
-bad_roles = ['test',]
+bad_roles = ['admin','test',]
 duration = 60
 
 # Create a client with the trustor username and password
