@@ -53,21 +53,21 @@ duration = 60
 
 # Create a client with the trustor username and password
 trustor_client = client.Client(debug=True,
-							   username=trustor,
-				               password=trustor,
-			        		   tenant_name=trustor_project,
-				               auth_url=os_auth_url,
-				               stable_duration=duration,
-				               endpoint=os_endpoint)
+                                username=trustor,
+				password=trustor,
+			        tenant_name=trustor_project,
+                                auth_url=os_auth_url,
+				stable_duration=duration,
+				endpoint=os_endpoint)
 ret = trustor_client.authenticate()
 print "All roles of the trustor: %s" %trustor_client.auth_ref.role_names
 
 # Create a trust use the trustor client with impersonation enabled for the middle trustee
 trustor_trust = trustor_client.trusts.create(trustor_user=trustor_id,
-											 trustee_user=middle_trustee_id,
-											 project=trustor_project_id,
-											 role_names=delegate_roles,
-											 impersonation=True)
+                                                trustee_user=middle_trustee_id,
+						project=trustor_project_id,
+						role_names=delegate_roles,
+						impersonation=True)
 # If neccessary, show the trustor_trust
 print 20*'---'
 print "Roles the trustor has delegated to the trustee: %s" %trustor_trust.roles
@@ -76,13 +76,13 @@ print 20*'---'
 # Create a middle trustee client scoped to the trustor trust 
 # with the middle trustee username and password
 middle_trustee_client = client.Client(debug=True,
-									  username=middle_trustee,
-									  password=middle_trustee,
-									  auth_url=os_auth_url,
-									  endpoint=os_endpoint,
-                                      trust_id=trustor_trust.id,
-									  stable_duration=duration,
-									  force_new_token=True)
+                                        username=middle_trustee,
+					password=middle_trustee,
+					auth_url=os_auth_url,
+					endpoint=os_endpoint,
+                                        trust_id=trustor_trust.id,
+					stable_duration=duration,
+					force_new_token=True)
 ret = middle_trustee_client.authenticate()
 print "Whether the trustor trust scoped: %s" %middle_trustee_client.auth_ref.trust_scoped
 print "The roles of middle trustee: %s" %middle_trustee_client.auth_ref.role_names
@@ -91,22 +91,22 @@ print 20*'---'
 # Create a trust use the middle trustee client with impersonation enabled to impersonating the trustor
 # for the third trustee
 middle_trustee_trust = middle_trustee_client.trusts.create(trustor_user=trustor_id,
-														   trustee_user=third_trustee_id,
-														   project=trustor_project_id,
-														   role_names=bad_roles,
-														   impersonation=True)
+							    trustee_user=third_trustee_id,
+                                                            project=trustor_project_id,
+                                                            role_names=bad_roles,
+                                                            impersonation=True)
 print "Roles the middle_trustee has delegated to the third_trustee: %s" %middle_trustee_trust.roles
 print 20*'---'	
 
 # Create a third trustee client scoped to the middle trustee trust
 third_trustee_client = client.Client(debug=True,
-									 username=third_trustee,
-									 password=third_trustee,
-									 auth_url=os_auth_url,
-									 endpoint=os_endpoint,
-									 trust_id=middle_trustee_trust.id,
-									 stable_duration=duration,
-									 force_new_token=True)
+                                        username=third_trustee,
+					password=third_trustee,
+                                        auth_url=os_auth_url,
+					endpoint=os_endpoint,
+					trust_id=middle_trustee_trust.id,
+					stable_duration=duration,
+					force_new_token=True)
 ret = third_trustee_client.authenticate()
 
 print "Whether the middle trustee trust scoped: %s" %third_trustee_client.auth_ref.trust_scoped
