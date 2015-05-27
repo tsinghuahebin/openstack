@@ -9,8 +9,6 @@ To setup the experiment environment, do as follows:
 1.Create three tenants:
 	keystone tenant-create --name Tenant1
 	keystone tenant-create --name Tenant2
-	
-
 	keystone tenant-create --name Tenant3
 2.Create three users for each tenant:
 	keystone user-create --name User1 --tenant Tenant1 --pass User1
