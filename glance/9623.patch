@@ -1,0 +1,182 @@
+diff -Naur a/glance/api/authorization.py b/glance/api/authorization.py
+--- a/glance/api/authorization.py	Fri Oct  3 07:13:07 2014
++++ b/glance/api/authorization.py	Wed May 27 12:54:33 2015
+@@ -147,10 +147,10 @@
+             raise exception.Forbidden(message
+                                       % self.image.image_id)
+ 
+-    def save(self, image_member):
++    def save(self, image_member, from_state=None):
+         if (self.context.is_admin or
+                 self.context.owner == image_member.member_id):
+-            self.member_repo.save(image_member)
++            self.member_repo.save(image_member, from_state=from_state)
+         else:
+             message = _("You cannot update image member %s")
+             raise exception.Forbidden(message % image_member.member_id)
+diff -Naur a/glance/api/policy.py b/glance/api/policy.py
+--- a/glance/api/policy.py	Fri Oct  3 07:13:07 2014
++++ b/glance/api/policy.py	Wed May 27 12:58:37 2015
+@@ -182,9 +182,9 @@
+         self.policy.enforce(self.context, 'get_images', {})
+         return super(ImageRepoProxy, self).list(*args, **kwargs)
+ 
+-    def save(self, image):
++    def save(self, image, from_state=None):
+         self.policy.enforce(self.context, 'modify_image', {})
+-        return super(ImageRepoProxy, self).save(image)
++        return super(ImageRepoProxy, self).save(image, from_state=from_state)
+ 
+     def add(self, image):
+         self.policy.enforce(self.context, 'add_image', {})
+@@ -283,9 +283,9 @@
+         self.policy.enforce(self.context, 'get_member', {})
+         return self.member_repo.get(member_id)
+ 
+-    def save(self, member):
++    def save(self, member, from_state=None):
+         self.policy.enforce(self.context, 'modify_member', {})
+-        self.member_repo.save(member)
++        self.member_repo.save(member, from_state=from_state)
+ 
+     def list(self, *args, **kwargs):
+         self.policy.enforce(self.context, 'get_members', {})
+diff -Naur a/glance/api/v1/upload_utils.py b/glance/api/v1/upload_utils.py
+--- a/glance/api/v1/upload_utils.py	Fri Oct  3 07:13:07 2014
++++ b/glance/api/v1/upload_utils.py	Wed May 27 13:05:11 2015
+@@ -146,12 +146,19 @@
+         update_data = {'checksum': checksum,
+                        'size': size}
+         try:
+-            image_meta = registry.update_image_metadata(req.context,
+-                                                        image_id,
+-                                                        update_data,
+-                                                        from_state='saving')
+-
+-        except exception.NotFound as e:
++            try:
++                state = 'saving'
++                image_meta = registry.update_image_metadata(req.context,
++                                                            image_id,
++                                                            update_data,
++                                                            from_state=state)
++            except exception.Duplicate:
++                image = registry.get_image_metadata(req.context, image_id)
++                if image['status'] == 'deleted':
++                    raise exception.NotFound()
++                else:
++                    raise
++        except exception.NotFound:
+             msg = _("Image %s could not be found after upload. The image may "
+                     "have been deleted during the upload.") % image_id
+             LOG.info(msg)
+diff -Naur a/glance/api/v2/image_data.py b/glance/api/v2/image_data.py
+--- a/glance/api/v2/image_data.py	Fri Oct  3 07:13:07 2014
++++ b/glance/api/v2/image_data.py	Wed May 27 13:12:30 2015
+@@ -66,13 +66,12 @@
+             try:
+                 image_repo.save(image)
+                 image.set_data(data, size)
+-                image_repo.save(image)
+-            except exception.NotFound as e:
+-                msg = (_("Image %(id)s could not be found after upload."
+-                         "The image may have been deleted during the upload: "
+-                         "%(error)s Cleaning up the chunks uploaded") %
+-                       {'id': image_id,
+-                        'error': e})
++                image_repo.save(image, from_state='saving')
++            except (exception.NotFound, exception.Conflict):
++                msg = (_("Image %s could not be found after upload."
++                         "The image may have been deleted during the upload,"
++                         "cleaning up the chunks uploaded") %
++                       image_id)
+                 LOG.warn(msg)
+                 # NOTE(sridevi): Cleaning up the uploaded chunks.
+                 try:
+@@ -130,6 +129,10 @@
+             self._restore(image_repo, image)
+             raise webob.exc.HTTPServiceUnavailable(explanation=msg,
+                                                    request=req)
++
++        except webob.exc.HTTPGone as e:
++            with excutils.save_and_reraise_exception():
++                LOG.error(_LE("Failed to upload image data due to HTTP error"))
+ 
+         except webob.exc.HTTPError as e:
+             LOG.error(_("Failed to upload image data due to HTTP error"))
+diff -Naur a/glance/db/__init__.py b/glance/db/__init__.py
+--- a/glance/db/__init__.py	Fri Oct  3 07:13:07 2014
++++ b/glance/db/__init__.py	Wed May 27 13:15:30 2015
+@@ -162,7 +162,7 @@
+         image.created_at = new_values['created_at']
+         image.updated_at = new_values['updated_at']
+ 
+-    def save(self, image):
++    def save(self, image, from_state=None):
+         image_values = self._format_image_to_db(image)
+         if image_values['size'] > CONF.image_size_cap:
+             raise exception.ImageSizeLimitExceeded
+@@ -170,7 +170,8 @@
+             new_values = self.db_api.image_update(self.context,
+                                                   image.image_id,
+                                                   image_values,
+-                                                  purge_props=True)
++                                                  purge_props=True,
++                                                  from_state=from_state)
+         except (exception.NotFound, exception.Forbidden):
+             msg = _("No image found with ID %s") % image.image_id
+             raise exception.NotFound(msg)
+@@ -263,7 +264,7 @@
+             msg = _("The specified member %s could not be found")
+             raise exception.NotFound(msg % image_member.id)
+ 
+-    def save(self, image_member):
++    def save(self, image_member, from_state=None):
+         image_member_values = self._format_image_member_to_db(image_member)
+         try:
+             new_values = self.db_api.image_member_update(self.context,
+diff -Naur a/glance/domain/proxy.py b/glance/domain/proxy.py
+--- a/glance/domain/proxy.py	Fri Oct  3 07:13:07 2014
++++ b/glance/domain/proxy.py	Wed May 27 13:16:58 2015
+@@ -94,10 +94,10 @@
+         result = self.base.add(base_item)
+         return self.helper.proxy(result)
+ 
+-    def save(self, item):
++    def save(self, item, from_state=None):
+         base_item = self.helper.unproxy(item)
+         result = self.base.save(base_item)
+-        return self.helper.proxy(result)
++        return self.helper.proxy(result, from_state=from_state)
+ 
+     def remove(self, item):
+         base_item = self.helper.unproxy(item)
+diff -Naur a/glance/notifier.py b/glance/notifier.py
+--- a/glance/notifier.py	Fri Oct  3 07:13:07 2014
++++ b/glance/notifier.py	Wed May 27 13:21:07 2015
+@@ -178,8 +178,8 @@
+                                              item_proxy_class=ImageProxy,
+                                              item_proxy_kwargs=proxy_kwargs)
+ 
+-    def save(self, image):
+-        super(ImageRepoProxy, self).save(image)
++    def save(self, image, from_state=None):
++        super(ImageRepoProxy, self).save(image,from_state=from_state)
+         self.notifier.info('image.update',
+                            format_image_notification(image))
+ 
+diff -Naur a/glance/quota/__init__.py b/glance/quota/__init__.py
+--- a/glance/quota/__init__.py	Fri Oct  3 07:13:07 2014
++++ b/glance/quota/__init__.py	Wed May 27 13:23:05 2015
+@@ -96,9 +96,9 @@
+             raise exception.ImagePropertyLimitExceeded(attempted=attempted,
+                                                        maximum=maximum)
+ 
+-    def save(self, image):
++    def save(self, image, from_state=None):
+         self._enforce_image_property_quota(image)
+-        super(ImageRepoProxy, self).save(image)
++        super(ImageRepoProxy, self).save(image, from_state=from_state)
+ 
+     def add(self, image):
+         self._enforce_image_property_quota(image)
